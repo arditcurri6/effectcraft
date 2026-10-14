@@ -140,7 +140,7 @@ look at the candidates:
 
 * Slow motion cannot recover detail that is not in the source frames; heavily blurred source gives
   blurred output.
-* Draft and Balanced can miss small fast objects (see above); Inverse warping can still lose thin
+* A small object that moves about its own width per frame is reconstructed with a distorted outline even at Best (visible in the montage; blending would show two ghosts instead). Draft and Balanced can miss such objects entirely (see above); Inverse warping can still lose thin
   structures at depth discontinuities that Forward handles.
 * One foreground matte; no separate motion for several regions, and no spline/shape-driven guides
   (guides are points).
@@ -195,4 +195,5 @@ cargo test -p effectcraft-effects --test frameweaver   # the effect through a mo
 cargo run --release -p effectcraft-frameweaver --example ablate [width]     # tuning table
 cargo run --release -p effectcraft-frameweaver --example reference          # needs ffmpeg
 cargo run --release -p effectcraft-frameweaver --example bench              # performance
+cargo run --release -p effectcraft-frameweaver --example montage -- out.ppm parallax crossing   # look at it
 ```

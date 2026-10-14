@@ -23,6 +23,7 @@
 pub mod backend;
 pub mod cache;
 pub mod consistency;
+pub mod display;
 pub mod field;
 pub mod flow;
 pub mod guides;

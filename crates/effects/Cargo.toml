@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 effectcraft-geom = { workspace = true }
 effectcraft-color = { workspace = true }
+effectcraft-frameweaver = { workspace = true }
 effectcraft-keyframe = { workspace = true }
 effectcraft-project = { workspace = true }
 effectcraft-raster = { workspace = true }

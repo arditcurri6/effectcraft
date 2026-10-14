@@ -27,6 +27,7 @@ mod distort3;
 pub mod distort4;
 pub mod face_track;
 pub mod fidelity;
+mod frameweaver;
 mod generate;
 mod generate2;
 mod generate3;
@@ -101,6 +102,8 @@ pub use noise::GrainLook;
 pub use textfx::{BoltPlan, TextLook, TextPass, bolt_plan, text_passes};
 pub use transition::place_layer;
 // effectcraft-gpu fx_noise.
+pub use effectcraft_frameweaver::TimeField;
+pub use frameweaver::{FwPlan, FwStep, LayerShow, MotionBlur, frameweaver_plan};
 pub use keying2::{InnerOuterPlan, inner_outer_plan};
 pub use noise::remove_grain_level;
 pub use noise3::{FractalGpu, fractal_gpu};
@@ -527,6 +530,7 @@ pub fn registry() -> &'static [EffectSpec] {
         v.extend(sim3::specs());
         v.extend(channel3d::specs());
         v.extend(time_fx::specs());
+        v.extend(frameweaver::specs());
         v.extend(audio_fx::specs());
         v.extend(paint::specs());
         v.extend(puppet::specs());
@@ -848,6 +852,7 @@ fn group_name(m: &str) -> &str {
         .chain(roto::GROUPS)
         .chain(object_matte::GROUPS)
         .chain(keylight::GROUPS)
+        .chain(frameweaver::GROUPS)
         .chain(PARAM_GROUPS)
         .find(|(id, _)| *id == m)
         .map(|(_, n)| *n)
@@ -874,6 +879,7 @@ fn nested_group<'a>(g: &'a mut PropGroup, ids: &mut Ids, path: &str) -> Option<&
 /// (Mercury GPU Acceleration; the Effects & Presets GPU badge). Expression controls are
 /// pass-throughs and count as GPU effects too.
 pub const GPU_EFFECTS: &[&str] = &[
+    "ec.time.frameweaver",
     "ec.blur.gaussian",
     "ec.blur.fastbox",
     "ec.blur.directional",
@@ -1203,6 +1209,7 @@ pub const TIME_DEPENDENT: &[&str] = &[
     "ec.time.ccforcemotionblur",
     "ec.time.ccwidetime",
     "ec.time.pixelmotionblur",
+    "ec.time.frameweaver",
     // Refine mattes' Reduce Chatter / motion blur read neighbouring frames.
     "ec.matte.refinesoft",
     "ec.matte.refinehard",

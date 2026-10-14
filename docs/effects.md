@@ -3,11 +3,11 @@
 <!-- Generated from the effect registry (crates/effects/src/catalog.rs); do not edit by hand.
      Regenerate: UPDATE_DOCS=1 cargo test -p effectcraft-effects --lib effects_doc_is_current -->
 
-EffectCraft ships 307 effects with 3032 parameters in total, grouped into the same categories as the Effects & Presets panel. Every effect is our own implementation, written from public behaviour descriptions and standard image-processing literature. Parameter names, order, popup options, units, defaults and ranges follow the reference application so that projects, expressions and muscle memory carry over.
+EffectCraft ships 308 effects with 3077 parameters in total, grouped into the same categories as the Effects & Presets panel. Every effect is our own implementation, written from public behaviour descriptions and standard image-processing literature. Parameter names, order, popup options, units, defaults and ranges follow the reference application so that projects, expressions and muscle memory carry over.
 
-- **GPU**: 280 effects also run on the GPU compositor with identical results.
-- **32**: 307 effects process 32-bit float (HDR, overbright) pixels without clamping.
-- **Status**: 307 implemented in full, 0 partial (what is missing is listed).
+- **GPU**: 281 effects also run on the GPU compositor with identical results.
+- **32**: 308 effects process 32-bit float (HDR, overbright) pixels without clamping.
+- **Status**: 308 implemented in full, 0 partial (what is missing is listed).
 
 Effects are addressed by id (`ec.<category>.<name>`) or display name in commands, scripts and the control channel, and every parameter by its id (`effects/#1/blurriness`).
 
@@ -381,6 +381,7 @@ Effects are addressed by id (`ec.<category>.<name>`) or display name in commands
 | CC Force Motion Blur | `ec.time.ccforcemotionblur` | 4 | GPU | 32 | Implemented |
 | CC Wide Time | `ec.time.ccwidetime` | 3 | GPU | 32 | Implemented |
 | Echo | `ec.time.echo` | 5 | GPU | 32 | Implemented |
+| FrameWeaver | `ec.time.frameweaver` | 45 | GPU | 32 | Implemented |
 | Pixel Motion Blur | `ec.time.pixelmotionblur` | 4 | GPU | 32 | Implemented |
 | Posterize Time | `ec.time.posterizetime` | 1 | GPU | 32 | Implemented |
 | Time Difference | `ec.time.timedifference` | 5 | GPU | 32 | Implemented |

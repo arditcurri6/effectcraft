@@ -23,6 +23,14 @@ pub fn luma(p: [f32; 4]) -> f32 {
     if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 }
 }
 
+/// The analysis plane size for a `w × h` frame whose long side is capped at `max_long`.
+pub fn analysis_size(w: usize, h: usize, max_long: u32) -> (usize, usize) {
+    let long = w.max(h).max(1) as f32;
+    let cap = (max_long.max(16) as usize).min(crate::MAX_SIDE) as f32;
+    let k = if long > cap { cap / long } else { 1.0 };
+    (((w as f32 * k).round() as usize).max(1), ((h as f32 * k).round() as usize).max(1))
+}
+
 /// Build the analysis plane of `img`. `matte` (frame-sized, 0…1) multiplies the plane so that
 /// pixels outside it do not vote. The plane's long side is at most `max_long`.
 pub fn analysis_plane(img: &Image, max_long: u32, matte: Option<&[f32]>, enhance: bool) -> Option<Analysis> {
@@ -34,10 +42,7 @@ pub fn analysis_plane(img: &Image, max_long: u32, matte: Option<&[f32]>, enhance
         Some(m) => img.data.par_iter().zip(m.par_iter()).map(|(p, &k)| luma(*p) * if k.is_finite() { k.clamp(0.0, 1.0) } else { 0.0 }).collect(),
         None => img.data.par_iter().map(|p| luma(*p)).collect(),
     };
-    let long = w.max(h) as f32;
-    let cap = (max_long.max(16) as usize).min(crate::MAX_SIDE) as f32;
-    let k = if long > cap { cap / long } else { 1.0 };
-    let (nw, nh) = (((w as f32 * k).round() as usize).max(1), ((h as f32 * k).round() as usize).max(1));
+    let (nw, nh) = analysis_size(w, h, max_long);
     let raw = RawPlane { w, h, d };
     let mut plane = raw.resize(nw, nh)?;
     if enhance {

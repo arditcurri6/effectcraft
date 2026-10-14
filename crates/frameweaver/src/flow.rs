@@ -248,9 +248,59 @@ struct Patches<'a> {
     ps: usize,
 }
 
+/// Row slices of the displaced patch in B: the four bilinear taps share one fractional offset
+/// for every pixel of the patch, so when the displaced patch lies inside the plane its rows are
+/// read directly (no clamping, no per-pixel floor).
+struct Window {
+    /// Index of the first tap (top-left) in B.
+    base: usize,
+    tx: f32,
+    ty: f32,
+}
+
 impl Patches<'_> {
+    fn window(&self, px: usize, py: usize, u: [f32; 2]) -> Option<Window> {
+        let (x, y) = (px as f32 + u[0], py as f32 + u[1]);
+        if !(x.is_finite() && y.is_finite()) {
+            return None;
+        }
+        let (fx, fy) = (x.floor(), y.floor());
+        if fx < 0.0 || fy < 0.0 {
+            return None;
+        }
+        let (bx, by) = (fx as usize, fy as usize);
+        let b = self.b;
+        // The last pixel reads taps bx + ps and by + ps.
+        (bx + self.ps < b.w && by + self.ps < b.h).then_some(Window { base: by * b.w + bx, tx: x - fx, ty: y - fy })
+    }
+
+    /// Row `j` of the displaced patch: the two B rows and the template row.
+    fn rows(&self, win: &Window, px: usize, py: usize, j: usize) -> Option<(&[f32], &[f32], &[f32])> {
+        let (w, ps) = (self.b.w, self.ps);
+        let i = win.base + j * w;
+        let t = (py + j) * self.a.w + px;
+        Some((self.b.d.get(i..i + ps + 1)?, self.b.d.get(i + w..i + w + ps + 1)?, self.a.d.get(t..t + ps)?))
+    }
+
     /// Sum of squared differences of the patch at (px, py) displaced by `u`.
     fn sse(&self, px: usize, py: usize, u: [f32; 2]) -> f32 {
+        if let Some(win) = self.window(px, py, u) {
+            let mut sse = 0.0f32;
+            for j in 0..self.ps {
+                let Some((r0, r1, t)) = self.rows(&win, px, py, j) else { return self.sse_slow(px, py, u) };
+                for i in 0..self.ps {
+                    let top = r0[i] + (r0[i + 1] - r0[i]) * win.tx;
+                    let bot = r1[i] + (r1[i + 1] - r1[i]) * win.tx;
+                    let e = top + (bot - top) * win.ty - t[i];
+                    sse += e * e;
+                }
+            }
+            return sse;
+        }
+        self.sse_slow(px, py, u)
+    }
+
+    fn sse_slow(&self, px: usize, py: usize, u: [f32; 2]) -> f32 {
         let mut sse = 0.0f32;
         for y in py..py + self.ps {
             for x in px..px + self.ps {
@@ -261,17 +311,58 @@ impl Patches<'_> {
         sse
     }
 
+    /// (Σ e·∂x A, Σ e·∂y A, Σ e²) of the patch displaced by `u`.
+    fn residual(&self, px: usize, py: usize, u: [f32; 2]) -> (f32, f32, f32) {
+        let ps = self.ps;
+        let (mut bx, mut by, mut sse) = (0.0f32, 0.0f32, 0.0f32);
+        if let Some(win) = self.window(px, py, u) {
+            let mut inside = true;
+            for j in 0..ps {
+                let (Some((r0, r1, t)), Some(gx), Some(gy)) = (
+                    self.rows(&win, px, py, j),
+                    self.gx.d.get((py + j) * self.a.w + px..(py + j) * self.a.w + px + ps),
+                    self.gy.d.get((py + j) * self.a.w + px..(py + j) * self.a.w + px + ps),
+                ) else {
+                    inside = false;
+                    break;
+                };
+                for i in 0..ps {
+                    let top = r0[i] + (r0[i + 1] - r0[i]) * win.tx;
+                    let bot = r1[i] + (r1[i + 1] - r1[i]) * win.tx;
+                    let e = top + (bot - top) * win.ty - t[i];
+                    bx += e * gx[i];
+                    by += e * gy[i];
+                    sse += e * e;
+                }
+            }
+            if inside {
+                return (bx, by, sse);
+            }
+            (bx, by, sse) = (0.0, 0.0, 0.0);
+        }
+        for y in py..py + ps {
+            for x in px..px + ps {
+                let e = self.b.sample(x as f32 + u[0], y as f32 + u[1]) - self.a.at(x as i64, y as i64);
+                bx += e * self.gx.at(x as i64, y as i64);
+                by += e * self.gy.at(x as i64, y as i64);
+                sse += e * e;
+            }
+        }
+        (bx, by, sse)
+    }
+
     /// Up to `iters` Lucas–Kanade updates from `start`; an update that makes the patch match
     /// worse is undone. The template Hessian is fixed (the "inverse" in Dense Inverse Search).
     fn lk(&self, px: usize, py: usize, start: [f32; 2], iters: u32) -> [f32; 2] {
         let ps = self.ps;
         let (mut hxx, mut hxy, mut hyy) = (0.0f32, 0.0f32, 0.0f32);
-        for y in py..py + ps {
-            for x in px..px + ps {
-                let (dx, dy) = (self.gx.at(x as i64, y as i64), self.gy.at(x as i64, y as i64));
-                hxx += dx * dx;
-                hxy += dx * dy;
-                hyy += dy * dy;
+        for j in 0..ps {
+            let o = (py + j) * self.a.w + px;
+            let (Some(gx), Some(gy)) = (self.gx.d.get(o..o + ps), self.gy.d.get(o..o + ps)) else { return start };
+            for i in 0..ps {
+                hxx += gx[i] * gx[i];
+                hxy += gx[i] * gy[i];
+                hyy += gy[i] * gy[i];
             }
         }
         let det = hxx * hyy - hxy * hxy;
@@ -284,15 +375,7 @@ impl Patches<'_> {
         let mut prev_u = start;
         let mut prev_sse = f32::INFINITY;
         for _ in 0..iters.max(1) {
-            let (mut bx, mut by, mut sse) = (0.0f32, 0.0f32, 0.0f32);
-            for y in py..py + ps {
-                for x in px..px + ps {
-                    let e = self.b.sample(x as f32 + u[0], y as f32 + u[1]) - self.a.at(x as i64, y as i64);
-                    bx += e * self.gx.at(x as i64, y as i64);
-                    by += e * self.gy.at(x as i64, y as i64);
-                    sse += e * e;
-                }
-            }
+            let (bx, by, sse) = self.residual(px, py, u);
             if sse > prev_sse {
                 // The last update made the patch match worse: keep the previous vector.
                 return prev_u;
@@ -479,6 +562,31 @@ pub fn median3(f: &FlowField) -> FlowField {
     out
 }
 
+/// Bilinear samples of several same-size planes at one position: the floor, the fractions and
+/// the (clamped) tap indices are computed once.
+fn sample6(planes: &[&Plane; 6], x: f32, y: f32) -> [f32; 6] {
+    let mut out = [0.0f32; 6];
+    let Some(first) = planes.first() else { return out };
+    if first.is_empty() || !(x.is_finite() && y.is_finite()) {
+        return out;
+    }
+    let (x0, y0) = (x.floor(), y.floor());
+    let (tx, ty) = (x - x0, y - y0);
+    let (xi, yi) = (x0.clamp(-1e6, 1e6) as i64, y0.clamp(-1e6, 1e6) as i64);
+    let (w, h) = (first.w as i64, first.h as i64);
+    let (xa, xb) = (xi.clamp(0, w - 1) as usize, (xi + 1).clamp(0, w - 1) as usize);
+    let (ya, yb) = (yi.clamp(0, h - 1) as usize, (yi + 1).clamp(0, h - 1) as usize);
+    let (i00, i10, i01, i11) = (ya * first.w + xa, ya * first.w + xb, yb * first.w + xa, yb * first.w + xb);
+    for (o, p) in out.iter_mut().zip(planes) {
+        let g = |i: usize| p.d.get(i).copied().unwrap_or(0.0);
+        let (a, b, c, d) = (g(i00), g(i10), g(i01), g(i11));
+        let top = a + (b - a) * tx;
+        let bot = c + (d - c) * tx;
+        *o = top + (bot - top) * ty;
+    }
+    out
+}
+
 /// Variational refinement of `flow` (A → B) on one level: `outer` re-linearisations of
 /// brightness constancy (weight 1) and gradient constancy (weight γ = 5) with Charbonnier
 /// robust penalties, smoothness weighted by `alpha` and the flow gradient, each solved with
@@ -505,9 +613,8 @@ pub fn refine(a: &Plane, b: &Plane, flow: &FlowField, outer: u32, inner: u32, al
                 let (x, y) = ((i % w) as f32, (i / w) as f32);
                 let f = u.v.get(i).copied().unwrap_or([0.0; 2]);
                 let (sx, sy) = (x + f[0], y + f[1]);
-                let it = b.sample(sx, sy) - a.d.get(i).copied().unwrap_or(0.0);
-                let (ix, iy) = (bx.sample(sx, sy), by.sample(sx, sy));
-                let (ixx, ixy, iyy) = (bxx.sample(sx, sy), bxy.sample(sx, sy), byy.sample(sx, sy));
+                let [bv, ix, iy, ixx, ixy, iyy] = sample6(&[b, &bx, &by, &bxx, &bxy, &byy], sx, sy);
+                let it = bv - a.d.get(i).copied().unwrap_or(0.0);
                 let ixt = ix - ax.d.get(i).copied().unwrap_or(0.0);
                 let iyt = iy - ay.d.get(i).copied().unwrap_or(0.0);
                 let pd = 1.0 / (it * it + EPS2).sqrt();
@@ -532,49 +639,57 @@ pub fn refine(a: &Plane, b: &Plane, flow: &FlowField, outer: u32, inner: u32, al
             })
             .collect();
         let mut du: Vec<[f32; 2]> = vec![[0.0; 2]; n];
+        let mut next: Vec<[f32; 2]> = vec![[0.0; 2]; n];
         for _ in 0..inner {
             for color in 0..2usize {
                 let cur = &du;
-                let next: Vec<[f32; 2]> = (0..n)
-                    .into_par_iter()
-                    .map(|i| {
-                        let (x, y) = (i % w, i / w);
+                let uv = &u.v;
+                next.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+                    for (x, o) in row.iter_mut().enumerate() {
+                        let i = y * w + x;
                         let old = cur.get(i).copied().unwrap_or([0.0; 2]);
+                        *o = old;
                         if (x + y) % 2 != color {
-                            return old;
+                            continue;
                         }
-                        let Some(d) = data.get(i) else { return old };
+                        let Some(d) = data.get(i) else { continue };
                         let si = sw.get(i).copied().unwrap_or(0.0);
-                        let u0 = u.v.get(i).copied().unwrap_or([0.0; 2]);
+                        let u0 = uv.get(i).copied().unwrap_or([0.0; 2]);
                         let (mut s, mut tu, mut tv) = (0.0f32, 0.0f32, 0.0f32);
-                        for (dx, dy) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
-                            let (nx, ny) = (x as i64 + dx, y as i64 + dy);
-                            if nx < 0 || ny < 0 || nx >= w as i64 || ny >= h as i64 {
-                                continue;
-                            }
-                            let j = ny as usize * w + nx as usize;
+                        let mut add = |j: usize| {
                             let e = 0.5 * (si + sw.get(j).copied().unwrap_or(0.0));
-                            let uj = u.v.get(j).copied().unwrap_or([0.0; 2]);
+                            let uj = uv.get(j).copied().unwrap_or([0.0; 2]);
                             let dj = cur.get(j).copied().unwrap_or([0.0; 2]);
                             s += e;
                             tu += e * (uj[0] + dj[0] - u0[0]);
                             tv += e * (uj[1] + dj[1] - u0[1]);
+                        };
+                        if x > 0 {
+                            add(i - 1);
+                        }
+                        if x + 1 < w {
+                            add(i + 1);
+                        }
+                        if y > 0 {
+                            add(i - w);
+                        }
+                        if y + 1 < h {
+                            add(i + w);
                         }
                         let (m11, m22) = (d[0] + s + 1e-6, d[2] + s + 1e-6);
                         let det = m11 * m22 - d[1] * d[1];
                         if det.abs() < 1e-12 || !det.is_finite() {
-                            return old;
+                            continue;
                         }
                         let (r1, r2) = (d[3] + tu, d[4] + tv);
                         let nu = (m22 * r1 - d[1] * r2) / det;
                         let nv = (m11 * r2 - d[1] * r1) / det;
-                        if !(nu.is_finite() && nv.is_finite()) {
-                            return old;
+                        if nu.is_finite() && nv.is_finite() {
+                            *o = [old[0] + OMEGA * (nu - old[0]), old[1] + OMEGA * (nv - old[1])];
                         }
-                        [old[0] + OMEGA * (nu - old[0]), old[1] + OMEGA * (nv - old[1])]
-                    })
-                    .collect();
-                du = next;
+                    }
+                });
+                std::mem::swap(&mut du, &mut next);
             }
         }
         u.v.par_iter_mut().zip(du.par_iter()).for_each(|(f, d)| {

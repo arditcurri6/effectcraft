@@ -484,3 +484,33 @@ Each phase ends green (`cargo xtask ci`) and is one or more commits:
 | Upstream reorders the layer table or same-layer list | The two `xtask` lines are self-contained; re-apply on merge conflicts |
 | Memory with Separation + motion blur (many frames on the grid) | Fetch frames once per unique time (dedupe, as `time_fx::fetch`); refuse plans over a byte budget and fall back to fewer shutter samples |
 | Upstream changes to `time_fx` helpers FrameWeaver reuses | FrameWeaver calls only `pub` items (`time_frames`); private helpers it needs are copied into its adapter, not made public upstream |
+
+## 13. Revision 2: corrections made during implementation
+
+Status: implemented on branch `frameweaver`. Where this section and §1–12 disagree, this section
+wins. Every change below is backed by a test or a measurement
+(`cargo run --release -p effectcraft-frameweaver --example ablate`).
+
+| # | Spec said | Problem | Now |
+|---|---|---|---|
+| 1 | Speed mode `s = t·speed/100` | Wrong for a keyframed speed (the source time jumps at each change) | `s(t) = start/fps_in + ∫₀ᵗ speed/100`, trapezoid on the comp frame grid through `params_at` (≤ 16384 steps); constant speed is exact. Start Frame added (reverse playback from the last frame) |
+| 2 | Frames via `time_frames` | Cannot tell a missing frame from a blank one, so boundaries could blend with black | `time_frames_avail`; one available frame is held, none is transparent |
+| 3 | Presets Sloppy / Best | Too coarse; "Best" regressed on some content | Draft / Balanced / High / Best differing in analysis size, patch, overlap, iterations, refinement, symmetrisation and global fallback (table in `docs/frameweaver.md`); ordering is a test |
+| 4 | Visibility `v_a = 1 − occ_ba(q)`, `v_b = 1 − occ_ab(u)` | Assumes `u` and `q` are the same scene point; fails where surfaces cross, and a fixed point that oscillates is not a solution. Ignores unreliable (not occluded) motion | Candidates must solve their own equation; if both do and disagree, one winner (the one that survives in the other frame, else the better match) supplies both samples; a separate **confidence** (forward-backward consistency measured on the repaired pair) blends towards the nearest frame that can show the pixel |
+| 5 | Occluded vectors: push-pull of neighbours | Averaged occluder and background motion, inventing a motion neither has | Weighted fill from vectors near the dominant (global affine) motion; low-confidence pixels fill from plain neighbours |
+| 6 | Smoothness `α` 0.01·(2 − 1.8m) | Refinement over-fitted noise (flow error 0.14 → 0.52 px) | 0.1·(2 − 1.8m) (error 0.08 px on the noisy pan, 0.06 px average) |
+| 7 | Default Warping Inverse | Measured worse at occlusions (parallax 29 vs 37 dB before the winner rule); forward is the better default | Default Forward (depth-tested); Inverse kept (comparable after the winner rule, faster, no splat) |
+| 8 | Forward offsets `p − x` | Biased at partial coverage | `p − t` (landing position); visibility saturates at a quarter coverage; occluded splats ranked by occlusion alone |
+| 9 | `ffw_acc` / shutter instants | Motion blur is defined by §5.4 (taps along the field), not by averaging instants | One instant per frame; `ffw_mblur` after `ffw_synth` |
+| 10 | Controls flat (`speed`, `warping`, …) | Cannot be organised in Effect Controls | Groups: Time Remapping, Motion Estimation, Interpolation, Motion Blur, Segments, Advanced Guidance (separation, external vectors, guides), Diagnostics. Defaults otherwise as §4 (Quality Balanced, Vector Scale 16) |
+| 11 | "Alpha-assisted" / splines / several regions | Not specified | Alpha is part of the analysis plane (luma × alpha); single FG matte; no spline guides, no multi-region |
+| 12 | Cache keyed per §5.8 only | Output frames and decoded frames also cache | Flow pairs here (content-keyed, 6 / 256 MiB, poison-safe); decoded frames and output layers by the renderer. No cancellation hook exists in the effect API |
+| 13 | Benchmarks in §8 assumed Apple Silicon | Not measurable here | Measured on the reference machine in `docs/frameweaver.md`; the targets stay aspirational |
+
+**Verified rather than assumed:** the renderer already serves any layer time through
+`EffectHost::self_at` (forward, reverse, freeze, non-monotonic, repeated requests) and keys time
+effects on layer time (`ec.time.` prefix), so no engine change was needed for temporal access.
+
+**Not done:** a neural flow backend (the `FlowBackend` seam exists; see the guide for what is
+missing), GPU flow estimation, spline guides, several independent motion regions, a vector-export
+control, cancellation.

@@ -27,8 +27,11 @@ pub mod display;
 pub mod field;
 pub mod flow;
 pub mod guides;
+pub mod metrics;
+pub mod pipeline;
 pub mod plane;
 pub mod prep;
+pub mod scenes;
 pub mod synth;
 pub mod vectors;
 

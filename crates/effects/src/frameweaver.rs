@@ -55,7 +55,7 @@ pub fn specs() -> Vec<EffectSpec> {
         p("motion/imagePrep", "Image Prep", Value::Enum(0), popup(&["None", "Contrast/Edge Enhance"])),
         p("motion/sourceLayer", "Motion Source Layer", Value::Layer(None), ParamUi::Layer),
         p("interp/mode", "Frame Interpolation", Value::Enum(2), popup(&INTERP)),
-        p("interp/warping", "Warping", Value::Enum(0), popup(&["Inverse", "Forward"])),
+        p("interp/warping", "Warping", Value::Enum(1), popup(&["Inverse", "Forward (Depth-Tested)"])),
         p("interp/smartBlend", "Smart Blend", Value::Bool(true), ParamUi::Checkbox),
         p("motionBlur/enable", "Enable Motion Blur", Value::Bool(false), ParamUi::Checkbox),
         p("motionBlur/shutterAngle", "Shutter Angle", num(180.0), slider(0.0, 720.0, 0.0, 360.0, 1)),
@@ -192,7 +192,7 @@ impl Settings {
                 1 => Interp::Blend,
                 _ => Interp::Motion,
             },
-            warping: if p.e("interp/warping") == 1 { fw::Warping::Forward } else { fw::Warping::Inverse },
+            warping: if p.e("interp/warping") == 0 { fw::Warping::Inverse } else { fw::Warping::Forward },
             smart_blend: p.b("interp/smartBlend"),
             blur: p.b("motionBlur/enable"),
             shutter: clamped(p, "motionBlur/shutterAngle", 180.0, 0.0, 720.0),
@@ -557,12 +557,10 @@ pub fn frameweaver_plan(ctx: &EffectCtx) -> Option<FwPlan> {
     };
     let frame_dims = (grid.img.width, grid.img.height);
     let build_field = |pair: &fw::FlowPair, ia: &Image, ib: &Image, ma: Option<&[f32]>, mb: Option<&[f32]>| -> Option<fw::TimeField> {
+        let (pa, pb) = (analysis(ia, ma)?, analysis(ib, mb)?);
         match st.warping {
-            fw::Warping::Inverse => fw::field::inverse(pair, w, frame_dims),
-            fw::Warping::Forward => {
-                let (pa, pb) = (analysis(ia, ma)?, analysis(ib, mb)?);
-                fw::field::forward(pair, &pa.plane, &pb.plane, w, frame_dims)
-            }
+            fw::Warping::Inverse => fw::field::inverse(pair, &pa.plane, &pb.plane, w, frame_dims),
+            fw::Warping::Forward => fw::field::forward(pair, &pa.plane, &pb.plane, w, frame_dims),
         }
     };
     let blur = st

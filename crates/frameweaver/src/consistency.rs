@@ -85,7 +85,7 @@ fn motion_boundary(f: &FlowField) -> Option<Plane> {
 const BOUNDARY: f32 = 0.35;
 
 /// Confidence given to an occluded pixel (visible in one frame only, vector repaired).
-const OCCLUDED_TRUST: f32 = 0.85;
+const OCCLUDED_TRUST: f32 = 1.0;
 
 fn analyze(f: &FlowField, g: &FlowField) -> Option<Maps> {
     let (w, h) = (f.w, f.h);
@@ -374,7 +374,14 @@ impl FlowPair {
         }
         let rab = repair(&fab, &ab.hard, &ab.bad, p.global_fallback)?;
         let rba = repair(&fba, &ba.hard, &ba.bad, p.global_fallback)?;
-        Some(FlowPair { w: fab.w, h: fab.h, fab: rab, fba: rba, occ_ab: ab.occ, occ_ba: ba.occ, conf_ab: ab.conf, conf_ba: ba.conf })
+        // Confidence describes the vectors that will be used, so it is measured again on the
+        // repaired pair: a pixel whose own flow is right but whose counterpart in the other
+        // frame was corrupted (and has since been repaired) is not unreliable.
+        let (ab2, ba2) = (analyze(&rab, &rba)?, analyze(&rba, &rab)?);
+        let final_conf =
+            |hard: &[f32], second: Vec<f32>| -> Vec<f32> { hard.iter().zip(second).map(|(&h, c)| if h > 0.5 { OCCLUDED_TRUST } else { c }).collect() };
+        let (conf_ab, conf_ba) = (final_conf(&ab.hard, ab2.conf), final_conf(&ba.hard, ba2.conf));
+        Some(FlowPair { w: fab.w, h: fab.h, fab: rab, fba: rba, occ_ab: ab.occ, occ_ba: ba.occ, conf_ab, conf_ba })
     }
 
     /// Estimate both directions between analysis planes (in parallel) and analyse them.

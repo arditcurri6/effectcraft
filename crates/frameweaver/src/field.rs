@@ -110,12 +110,26 @@ fn bilerp(v: &[f32], w: usize, h: usize, x: f32, y: f32) -> f32 {
 
 /// Residual (field pixels) at which two frames' correspondence is trusted at 1/e^0.5.
 const RESIDUAL_SIGMA: f32 = 1.5;
+/// Residual (field pixels) above which `u` and `q` are different scene points.
+const RESIDUAL_CONFLICT: f32 = 2.0;
+/// Residual (field pixels) of `x = u + w·F(u)` within which a fixed point counts as a solution.
+const FIXED_POINT_TOLERANCE: f32 = 1.0;
 
-/// Inverse-warped time field at fraction `w` ∈ 0…1. `frame` is the frame size; the field is at
-/// the pair's (analysis) resolution.
-pub fn inverse(pair: &FlowPair, w: f32, frame: (u32, u32)) -> Option<TimeField> {
+/// Inverse-warped time field at fraction `w` ∈ 0…1. `a` / `b` are the analysis planes the pair
+/// was estimated on; `frame` is the frame size; the field is at the pair's (analysis)
+/// resolution.
+///
+/// Per output pixel `x`, two candidate scene points: `u` in A (`x = u + w·F_ab(u)`) and `q` in
+/// B (`x = q + (1 − w)·F_ba(q)`), by fixed-point iteration. When they agree (the residual
+/// `|u + F_ab(u) − q|` is small) both frames are sampled there. Where they disagree — surfaces
+/// crossing, an object about to cover the background — they are *different* scene points and
+/// blending their samples would mix surfaces: the pixel takes a single **winner**, the
+/// candidate that survives in the other frame (or, if both do, the better photometric match),
+/// and both samples come from that point's own correspondence. If neither survives, neither
+/// frame can show the pixel and the synthesis falls back to the nearest frame.
+pub fn inverse(pair: &FlowPair, a: &Plane, b: &Plane, w: f32, frame: (u32, u32)) -> Option<TimeField> {
     let (fw, fh) = (pair.w, pair.h);
-    if fw == 0 || fh == 0 || frame.0 == 0 || frame.1 == 0 {
+    if fw == 0 || fh == 0 || frame.0 == 0 || frame.1 == 0 || a.w != fw || a.h != fh || b.w != fw || b.h != fh {
         return None;
     }
     let w = if w.is_finite() { w.clamp(0.0, 1.0) } else { 0.0 };
@@ -134,21 +148,56 @@ pub fn inverse(pair: &FlowPair, w: f32, frame: (u32, u32)) -> Option<TimeField> 
                 q = [x - (1.0 - w) * g[0], y - (1.0 - w) * g[1]];
             }
             let fu = pair.fab.sample(u[0], u[1]);
-            let r = ((u[0] + fu[0] - q[0]).powi(2) + (u[1] + fu[1] - q[1]).powi(2)).sqrt();
-            let va = 1.0 - bilerp(&pair.occ_ba, fw, fh, q[0], q[1]);
-            let vb = 1.0 - bilerp(&pair.occ_ab, fw, fh, u[0], u[1]);
-            let ca = bilerp(&pair.conf_ab, fw, fh, u[0], u[1]);
-            let cb = bilerp(&pair.conf_ba, fw, fh, q[0], q[1]);
-            let rfac = (-(r * r) / (2.0 * RESIDUAL_SIGMA * RESIDUAL_SIGMA)).exp();
-            let conf = va * vb * ca * cb * rfac + va * (1.0 - vb) * ca + (1.0 - va) * vb * cb;
-            ([(u[0] - x) * scale[0], (u[1] - y) * scale[1]], [(q[0] - x) * scale[0], (q[1] - y) * scale[1]], va, vb, conf.clamp(0.0, 1.0))
+            let gq = pair.fba.sample(q[0], q[1]);
+            let (u_b, q_a) = ([u[0] + fu[0], u[1] + fu[1]], [q[0] + gq[0], q[1] + gq[1]]);
+            let r = ((u_b[0] - q[0]).powi(2) + (u_b[1] - q[1]).powi(2)).sqrt();
+            let (occ_u, occ_q) = (bilerp(&pair.occ_ab, fw, fh, u[0], u[1]), bilerp(&pair.occ_ba, fw, fh, q[0], q[1]));
+            let (ca, cb) = (bilerp(&pair.conf_ab, fw, fh, u[0], u[1]), bilerp(&pair.conf_ba, fw, fh, q[0], q[1]));
+            let px = |p: [f32; 2]| [(p[0] - x) * scale[0], (p[1] - y) * scale[1]];
+            // A candidate only counts if it solves its own equation: where the flow jumps, the
+            // fixed-point iteration can oscillate between two surfaces and end on a point that
+            // does not land on `x` at all.
+            let res_u = ((u[0] + w * fu[0] - x).powi(2) + (u[1] + w * fu[1] - y).powi(2)).sqrt();
+            let res_q = ((q[0] + (1.0 - w) * gq[0] - x).powi(2) + (q[1] + (1.0 - w) * gq[1] - y).powi(2)).sqrt();
+            let (valid_u, valid_q) = (res_u <= FIXED_POINT_TOLERANCE, res_q <= FIXED_POINT_TOLERANCE);
+            if valid_u && valid_q && r <= RESIDUAL_CONFLICT {
+                // One scene point seen from both sides.
+                let (va, vb) = (1.0 - occ_q, 1.0 - occ_u);
+                let rfac = (-(r * r) / (2.0 * RESIDUAL_SIGMA * RESIDUAL_SIGMA)).exp();
+                let conf = va * vb * ca * cb * rfac + va * (1.0 - vb) * ca + (1.0 - va) * vb * cb;
+                return (px(u), px(q), va, vb, conf.clamp(0.0, 1.0));
+            }
+            // One scene point, or two that disagree: take the one that is really at this pixel.
+            let pick_u = match (valid_u, valid_q) {
+                (false, false) => None,
+                (true, false) => Some(true),
+                (false, true) => Some(false),
+                (true, true) => match (occ_u < 0.5, occ_q < 0.5) {
+                    // Surfaces crossing: the one that survives in the other frame is in front.
+                    (true, false) => Some(true),
+                    (false, true) => Some(false),
+                    (false, false) => None,
+                    (true, true) => {
+                        let err_u = (b.sample(u_b[0], u_b[1]) - a.sample(u[0], u[1])).abs();
+                        let err_q = (a.sample(q_a[0], q_a[1]) - b.sample(q[0], q[1])).abs();
+                        Some(err_u <= err_q)
+                    }
+                },
+            };
+            match pick_u {
+                // The A point, and where it goes in B (A only if B hides it).
+                Some(true) => (px(u), px(u_b), 1.0, 1.0 - occ_u, ca),
+                // The B point, and where it came from in A (B only if A lacks it).
+                Some(false) => (px(q_a), px(q), 1.0 - occ_q, 1.0, cb),
+                None => (px(u), px(q), 0.0, 0.0, 0.0),
+            }
         })
         .collect();
     let mut f = TimeField { width: fw, height: fh, scale, ..TimeField::default() };
     f.to_a.reserve(n);
-    for (a, b, va, vb, c) in rows {
-        f.to_a.push(a);
-        f.to_b.push(b);
+    for (ta, tb, va, vb, c) in rows {
+        f.to_a.push(ta);
+        f.to_b.push(tb);
         f.vis_a.push(va);
         f.vis_b.push(vb);
         f.conf.push(c);
@@ -195,11 +244,22 @@ impl Splat {
                 continue;
             }
             *wt += k;
-            off[0] += (src[0] - px as f32) * k;
-            off[1] += (src[1] - py as f32) * k;
+            // Relative to where the splat actually landed, not to the pixel it spreads onto:
+            // the sample position is then `pixel − motion` however little of the pixel the
+            // splat covers (exact for locally uniform motion).
+            off[0] += (src[0] - dst[0]) * k;
+            off[1] += (src[1] - dst[1]) * k;
             *cf += conf * k;
         }
     }
+}
+
+/// The depth-test priority of a splat (lower wins): occluded pixels rank behind visible ones;
+/// between two visible pixels the better photometric match wins. An occluded pixel's match
+/// error compares it with a point it does not correspond to, so it takes no part in the
+/// ranking (otherwise neighbouring occluded splats discard each other).
+fn depth_key(occ: f32, err: f32) -> f32 {
+    if occ >= 0.5 { occ * 10.0 } else { occ * 10.0 + err }
 }
 
 /// Forward-warped time field at fraction `w`. `a` / `b` are the analysis planes the pair was
@@ -220,11 +280,11 @@ pub fn forward(pair: &FlowPair, a: &Plane, b: &Plane, w: f32, frame: (u32, u32))
             let p = [x as f32, y as f32];
             let f = pair.fab.at(x as i64, y as i64);
             let err = (b.sample(p[0] + f[0], p[1] + f[1]) - a.d.get(i).copied().unwrap_or(0.0)).abs();
-            let key = pair.occ_ab.get(i).copied().unwrap_or(0.0) * 10.0 + err;
+            let key = depth_key(pair.occ_ab.get(i).copied().unwrap_or(0.0), err);
             sa.add(fw, fh, p, [p[0] + w * f[0], p[1] + w * f[1]], key, pair.conf_ab.get(i).copied().unwrap_or(0.0));
             let g = pair.fba.at(x as i64, y as i64);
             let err = (a.sample(p[0] + g[0], p[1] + g[1]) - b.d.get(i).copied().unwrap_or(0.0)).abs();
-            let key = pair.occ_ba.get(i).copied().unwrap_or(0.0) * 10.0 + err;
+            let key = depth_key(pair.occ_ba.get(i).copied().unwrap_or(0.0), err);
             sb.add(fw, fh, p, [p[0] + (1.0 - w) * g[0], p[1] + (1.0 - w) * g[1]], key, pair.conf_ba.get(i).copied().unwrap_or(0.0));
         }
     }
@@ -241,8 +301,10 @@ pub fn forward(pair: &FlowPair, a: &Plane, b: &Plane, w: f32, frame: (u32, u32))
     for i in 0..n {
         let (ka, kb) = (wa.d.get(i).copied().unwrap_or(0.0), wb.d.get(i).copied().unwrap_or(0.0));
         let (ca, cb) = (ca.get(i).copied().unwrap_or(0.0), cb.get(i).copied().unwrap_or(0.0));
-        // A hole in both frames: both are "visible" (hallucinated motion) at reduced trust.
-        let (va, vb) = if ka < 1e-3 && kb < 1e-3 { (1.0, 1.0) } else { (ka, kb) };
+        // A frame that splatted onto the pixel can show it: a quarter of the pixel covered is
+        // enough (partial coverage at an edge only means the splat landed between pixels).
+        // A hole in both frames: both count as visible (hallucinated motion, confidence 0).
+        let (va, vb) = if ka < 1e-3 && kb < 1e-3 { (1.0, 1.0) } else { ((ka * 4.0).min(1.0), (kb * 4.0).min(1.0)) };
         let conf = if ka < 1e-3 && kb < 1e-3 { 0.0 } else { va * vb * ca * cb + va * (1.0 - vb) * ca + (1.0 - va) * vb * cb };
         let o = |v: [f32; 2]| [v[0] * scale[0], v[1] * scale[1]];
         f.to_a.push(o(fa.v.get(i).copied().unwrap_or([0.0; 2])));

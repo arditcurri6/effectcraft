@@ -32,6 +32,7 @@ const LAYERS: &[(&str, u8)] = &[
     ("hevcenc", 0),
     ("av1enc", 0),
     ("raster", 1),
+    ("frameweaver", 1),
     ("keyframe", 1),
     ("path", 1),
     ("psd", 1),
@@ -66,6 +67,7 @@ const LAYERS: &[(&str, u8)] = &[
 const SAME_LAYER: &[(&str, &str)] = &[
     ("path", "keyframe"),
     ("path", "raster"),
+    ("frameweaver", "raster"),
     ("text", "path"),
     ("pdf", "svg"),
     ("pdf", "text"),

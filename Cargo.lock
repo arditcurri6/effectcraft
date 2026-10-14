@@ -1307,6 +1307,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "effectcraft-frameweaver"
+version = "0.9.2"
+dependencies = [
+ "effectcraft-raster",
+ "rayon",
+]
+
+[[package]]
 name = "effectcraft-geom"
 version = "0.9.2"
 dependencies = [

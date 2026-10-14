@@ -16,6 +16,7 @@ effectcraft-time = { path = "crates/time" }
 effectcraft-geom = { path = "crates/geom" }
 effectcraft-color = { path = "crates/color" }
 effectcraft-raster = { path = "crates/raster" }
+effectcraft-frameweaver = { path = "crates/frameweaver" }
 effectcraft-path = { path = "crates/path" }
 effectcraft-keyframe = { path = "crates/keyframe" }
 effectcraft-project = { path = "crates/project" }
@@ -138,6 +139,9 @@ opt-level = 1
 
 # Pixel hot loops: keep debug builds interactive.
 [profile.dev.package.effectcraft-raster]
+opt-level = 3
+
+[profile.dev.package.effectcraft-frameweaver]
 opt-level = 3
 
 [profile.dev.package.effectcraft-render]

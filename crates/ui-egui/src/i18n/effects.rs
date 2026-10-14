@@ -27,8 +27,8 @@
 //! The Simplified Chinese names come from the installed After Effects 2026 (26.5.0.89)
 //! Simplified Chinese interface, its 21 category folder names included; `Cryptomatte`,
 //! `EXtractoR`, `IDentifier`, `Key Light` and `Unmult` stay in English as brand names, and
-//! `Face Measurements` / `Face Track Points` are EffectCraft's own effects, so their wording is
-//! ours.
+//! `Face Measurements` / `Face Track Points` / `FrameWeaver` are EffectCraft's own effects, so
+//! their wording is ours.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -384,6 +384,7 @@ const SIMPLIFIED_CHINESE: &[Row] = &[
     ("ec.time.ccforcemotionblur", "CC Force Motion Blur", "CC 强制运动模糊"),
     ("ec.time.ccwidetime", "CC Wide Time", "CC 宽泛时间"),
     ("ec.time.echo", "Echo", "残影"),
+    ("ec.time.frameweaver", "FrameWeaver", "帧编织器"),
     ("ec.time.pixelmotionblur", "Pixel Motion Blur", "像素运动模糊"),
     ("ec.time.posterizetime", "Posterize Time", "抽帧"),
     ("ec.time.timedifference", "Time Difference", "时差"),

@@ -63,6 +63,7 @@ mod fx_color;
 mod fx_depth;
 mod fx_distort;
 mod fx_extra;
+mod fx_frameweaver;
 mod fx_gen2;
 mod fx_generate;
 mod fx_key;
@@ -421,6 +422,8 @@ mod tests_fx_depth;
 mod tests_fx_distort;
 #[cfg(test)]
 mod tests_fx_extra;
+#[cfg(test)]
+mod tests_fx_frameweaver;
 #[cfg(test)]
 mod tests_fx_gen2;
 #[cfg(test)]

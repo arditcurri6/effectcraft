@@ -96,48 +96,68 @@ pub fn clear() {
 }
 
 /// FNV-1a over 32-bit words.
-struct Hasher(u64);
+/// A stable content hasher for cache keys.
+pub struct Hasher(u64);
+
+impl Default for Hasher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Hasher {
-    fn new() -> Hasher {
+    pub fn new() -> Hasher {
         Hasher(0xcbf2_9ce4_8422_2325)
     }
-    fn word(&mut self, v: u32) {
+    pub fn word(&mut self, v: u32) {
         for b in v.to_le_bytes() {
             self.0 ^= b as u64;
             self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
         }
     }
-    fn f(&mut self, v: f32) {
+    pub fn f(&mut self, v: f32) {
         self.word(v.to_bits());
+    }
+
+    /// Mix in a plane (size and every sample).
+    pub fn plane(&mut self, pl: &Plane) {
+        self.word(pl.w as u32);
+        self.word(pl.h as u32);
+        for &v in &pl.d {
+            self.f(v);
+        }
+    }
+
+    /// Mix in every estimator parameter.
+    pub fn params(&mut self, p: &FlowParams) {
+        self.word(p.max_long);
+        self.word(p.patch as u32);
+        self.f(p.overlap);
+        self.word(p.iters);
+        self.word(p.refine_outer);
+        self.word(p.refine_inner);
+        self.f(p.alpha);
+        self.word(p.median);
+        self.word(p.symmetrize as u32);
+        self.word(p.global_fallback as u32);
+    }
+
+    pub fn finish(&self) -> u64 {
+        self.0
     }
 }
 
 /// The cache key of a pair of planes, estimator parameters and extra inputs.
 pub fn key(a: &Plane, b: &Plane, p: &FlowParams, extra: &[f32]) -> u64 {
     let mut h = Hasher::new();
-    for pl in [a, b] {
-        h.word(pl.w as u32);
-        h.word(pl.h as u32);
-        for &v in &pl.d {
-            h.f(v);
-        }
-    }
-    h.word(p.max_long);
-    h.word(p.patch as u32);
-    h.f(p.overlap);
-    h.word(p.iters);
-    h.word(p.refine_outer);
-    h.word(p.refine_inner);
-    h.f(p.alpha);
-    h.word(p.median);
-    h.word(p.symmetrize as u32);
-    h.word(p.global_fallback as u32);
+    h.plane(a);
+    h.plane(b);
+    h.params(p);
     h.word(extra.len() as u32);
     for &v in extra {
         h.f(v);
     }
-    h.0
+    h.finish()
 }
 
 /// The cached pair for `key`, or the result of `compute` (inserted when `Some`).

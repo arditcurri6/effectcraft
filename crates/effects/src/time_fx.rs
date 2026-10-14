@@ -161,6 +161,9 @@ struct Frames {
     /// Template buffer (geometry of the output: offset/scale/size).
     grid: Buf,
     imgs: Vec<Image>,
+    /// Whether the host had a frame at each requested time (an unavailable one is blank in
+    /// `imgs`).
+    avail: Vec<bool>,
 }
 
 /// Fetch the layer (source + masks) at layer times `times`. `None` without a host.
@@ -218,13 +221,26 @@ fn fetch(ctx: &EffectCtx, times: &[f64]) -> Option<Frames> {
             placed.iter().find(|(q, _)| *q == k).map(|(_, i)| i.clone()).unwrap_or_else(|| Image::new(w, h))
         })
         .collect();
-    Some(Frames { grid, imgs })
+    let avail = times
+        .iter()
+        .map(|t| {
+            let k = (t * 1e6).round() as i64;
+            bufs.iter().any(|(q, b)| *q == k && b.is_some())
+        })
+        .collect();
+    Some(Frames { grid, imgs, avail })
 }
 
 /// The layer's frames at layer times `times` placed on one grid (the GPU Echo / Posterize Time,
 /// effectcraft-gpu `fx_noise`): (grid buffer, one image per time). `None` without a host.
 pub fn time_frames(ctx: &EffectCtx, times: &[f64]) -> Option<(Buf, Vec<Image>)> {
     fetch(ctx, times).map(|f| (f.grid, f.imgs))
+}
+
+/// [`time_frames`] that also says which of the times the host could provide (an unavailable
+/// frame — before the start or after the end of the footage — is a blank image).
+pub fn time_frames_avail(ctx: &EffectCtx, times: &[f64]) -> Option<(Buf, Vec<Image>, Vec<bool>)> {
+    fetch(ctx, times).map(|f| (f.grid, f.imgs, f.avail))
 }
 
 fn with_img(grid: Buf, img: Image) -> Buf {
@@ -645,7 +661,7 @@ const TW_MATTE_CHANNELS: [&str; 4] = ["Alpha", "Inverted Alpha", "Luminance", "I
 const TW_SHOW: [&str; 4] = ["Normal", "Foreground Only", "Background Only", "Matte"];
 
 /// A matte plane (foreground = 1) from a matte layer frame.
-fn matte_of(img: &Image, channel: u32) -> Vec<f32> {
+pub(crate) fn matte_of(img: &Image, channel: u32) -> Vec<f32> {
     img.data
         .par_iter()
         .map(|p| {
@@ -662,7 +678,7 @@ fn matte_of(img: &Image, channel: u32) -> Vec<f32> {
         .collect()
 }
 
-fn times_mask(img: &Image, m: &[f32], invert: bool) -> Image {
+pub(crate) fn times_mask(img: &Image, m: &[f32], invert: bool) -> Image {
     let mut out = img.clone();
     out.data.par_iter_mut().zip(m.par_iter()).for_each(|(p, &k)| {
         let k = if invert { 1.0 - k } else { k };
@@ -673,7 +689,7 @@ fn times_mask(img: &Image, m: &[f32], invert: bool) -> Image {
 
 /// Another layer (layer parameter `id`) at the comp times matching source layer times `times`,
 /// fitted onto `grid`. `None` when no layer is chosen.
-fn fetch_layer(ctx: &EffectCtx, id: &str, times: &[f64], grid: &Buf) -> Option<Vec<Image>> {
+pub(crate) fn fetch_layer(ctx: &EffectCtx, id: &str, times: &[f64], grid: &Buf) -> Option<Vec<Image>> {
     let lid = ctx.params.get(id)?.as_layer()?;
     let host = ctx.env.host?;
     let me = ctx.params.get(&crate::layer_source_id(id)).is_none_or(|v| v.as_enum() != 0);
@@ -908,7 +924,7 @@ fn layered(fg: Image, bg: Image, show: u32) -> Image {
 }
 
 /// A matte shown as opaque grey.
-fn matte_image(m: &[f32], like: &Image) -> Image {
+pub(crate) fn matte_image(m: &[f32], like: &Image) -> Image {
     let mut out = Image::new(like.width, like.height);
     out.data.par_iter_mut().zip(m.par_iter()).for_each(|(p, &k)| *p = [k, k, k, 1.0]);
     out

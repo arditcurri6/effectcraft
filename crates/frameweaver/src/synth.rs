@@ -149,8 +149,8 @@ mod tests {
     #[test]
     fn motion_weighted_blend_beats_frame_blend_on_translation() {
         // Frames at t = 0 and 1, truth at t = 0.5.
-        let (imgs, pair, _, _) = scene((12.0, 3.0), &[0.0, 1.0, 0.5], Quality::Best);
-        let tf = inverse(&pair, 0.5, (W, H)).unwrap();
+        let (imgs, pair, pa, pb) = scene((12.0, 3.0), &[0.0, 1.0, 0.5], Quality::Best);
+        let tf = inverse(&pair, &pa, &pb, 0.5, (W, H)).unwrap();
         let mw = synthesize(&imgs[0], &imgs[1], &tf, 0.5, true);
         let bl = blend(&imgs[0], &imgs[1], 0.5);
         let (pm, pb) = (psnr(&mw, &imgs[2], 20), psnr(&bl, &imgs[2], 20));
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn forward_and_inverse_agree_on_rigid_motion() {
         let (imgs, pair, pa, pb) = scene((7.0, -2.0), &[0.0, 1.0], Quality::Best);
-        let inv = synthesize(&imgs[0], &imgs[1], &inverse(&pair, 0.4, (W, H)).unwrap(), 0.4, true);
+        let inv = synthesize(&imgs[0], &imgs[1], &inverse(&pair, &pa, &pb, 0.4, (W, H)).unwrap(), 0.4, true);
         let fwd = synthesize(&imgs[0], &imgs[1], &forward(&pair, &pa, &pb, 0.4, (W, H)).unwrap(), 0.4, true);
         let mut s = 0.0;
         let mut n = 0.0;
@@ -180,9 +180,9 @@ mod tests {
 
     #[test]
     fn interpolation_at_the_ends_returns_the_frames() {
-        let (imgs, pair, _, _) = scene((9.0, 0.0), &[0.0, 1.0], Quality::Balanced);
+        let (imgs, pair, pa, pb) = scene((9.0, 0.0), &[0.0, 1.0], Quality::Balanced);
         for (w, which) in [(0.0f32, 0usize), (1.0, 1)] {
-            let o = synthesize(&imgs[0], &imgs[1], &inverse(&pair, w, (W, H)).unwrap(), w, true);
+            let o = synthesize(&imgs[0], &imgs[1], &inverse(&pair, &pa, &pb, w, (W, H)).unwrap(), w, true);
             let p = psnr(&o, &imgs[which], 12);
             assert!(p >= 40.0, "w={w}: {p} dB");
         }
@@ -190,8 +190,8 @@ mod tests {
 
     #[test]
     fn motion_blur_smears_along_motion_only() {
-        let (imgs, pair, _, _) = scene((10.0, 0.0), &[0.0, 1.0], Quality::Balanced);
-        let tf = inverse(&pair, 0.5, (W, H)).unwrap();
+        let (imgs, pair, pa, pb) = scene((10.0, 0.0), &[0.0, 1.0], Quality::Balanced);
+        let tf = inverse(&pair, &pa, &pb, 0.5, (W, H)).unwrap();
         let sharp = synthesize(&imgs[0], &imgs[1], &tf, 0.5, true);
         let none = motion_blur(&sharp, &tf, 0.0, 8);
         assert_eq!(none, sharp);
@@ -231,7 +231,7 @@ mod tests {
         let p = FlowParams::for_quality(Quality::Best, 0.7);
         let (pa, pb) = (analysis_plane(&a, p.max_long, None, false).unwrap(), analysis_plane(&b, p.max_long, None, false).unwrap());
         let pair = FlowPair::estimate(&pa.plane, &pb.plane, &p).unwrap();
-        let inv = synthesize(&a, &b, &inverse(&pair, 0.5, (W, H)).unwrap(), 0.5, true);
+        let inv = synthesize(&a, &b, &inverse(&pair, &pa.plane, &pb.plane, 0.5, (W, H)).unwrap(), 0.5, true);
         let fwd = synthesize(&a, &b, &forward(&pair, &pa.plane, &pb.plane, 0.5, (W, H)).unwrap(), 0.5, true);
         let bl = blend(&a, &b, 0.5);
         // At t = ½ the square spans x ∈ [37, 81): background x ∈ [31, 36) is being revealed

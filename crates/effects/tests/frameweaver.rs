@@ -281,7 +281,7 @@ fn fast_motion_and_camera_pan_are_followed() {
 fn warping_modes_agree_on_rigid_motion() {
     let _g = serial();
     let t = t_at_half_speed(3.5);
-    let inv = run(&Mock::new(Scene::Pan(7.0, -2.0), &[("motion/quality", e(BEST))]), t);
+    let inv = run(&Mock::new(Scene::Pan(7.0, -2.0), &[("motion/quality", e(BEST)), ("interp/warping", e(0))]), t);
     let fwd = run(&Mock::new(Scene::Pan(7.0, -2.0), &[("motion/quality", e(BEST)), ("interp/warping", e(1))]), t);
     assert!(psnr(&inv, &fwd, 16) >= 35.0, "{} dB", psnr(&inv, &fwd, 16));
     assert!(inv != fwd);

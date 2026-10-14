@@ -89,7 +89,7 @@ impl FlowParams {
             iters,
             refine_outer: ro,
             refine_inner: ri,
-            alpha: 0.01 * (2.0 - 1.8 * m),
+            alpha: 0.1 * (2.0 - 1.8 * m),
             median,
             symmetrize: sym,
             global_fallback: global,
@@ -219,9 +219,9 @@ pub fn estimate(a: &Plane, b: &Plane, p: &FlowParams) -> Result<FlowField, FlowE
         let search: i64 = if level + 1 == pa.len() {
             ((la.w.max(la.h) / 6) as i64).clamp(3, 12)
         } else if level > 0 {
-            4
+            7
         } else {
-            3
+            4
         };
         let mut f = dis_level(la, lb, &init, patch, stride, p.iters, search).unwrap_or(init);
         for _ in 0..p.median {

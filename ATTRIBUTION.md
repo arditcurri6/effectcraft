@@ -76,6 +76,9 @@ Screenshots of EffectCraft itself, rendered headlessly, showing only procedurall
 - Bundled extension (ScriptUI panel) with its twelve built-in ease presets:
   `extensions/scriptui-panels/Ease Presets.jsx` (sidecar `.attribution`).
 - Example effect plug-in: `examples/plugins/posterize-bands` (plug-in API v1, WebAssembly).
+- CineLooks look library (37 original looks in 12 categories: tool chains and parameter values designed for
+  EffectCraft, no third-party presets, film-stock measurements or names), its print styles and film models:
+  `crates/cinelooks/src/presets.rs`, `crates/cinelooks/src/program.rs` (2026-10-16, EffectCraft contributors).
 
 ## Trained models (optional downloads, not bundled)
 

@@ -59,6 +59,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub use commands::{CommandSpec, command_specs, find as find_command};
+pub use effectcraft_cinelooks as cinelooks;
 pub use effectcraft_color as color;
 pub use effectcraft_effects as effects;
 pub use effectcraft_geom as geom;

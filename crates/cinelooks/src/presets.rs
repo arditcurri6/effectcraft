@@ -579,4 +579,28 @@ mod tests {
             assert!(mean > 0.01, "{} barely changes the image ({mean})", p.name);
         }
     }
+
+    #[test]
+    fn portrait_looks_keep_skin_tones_natural() {
+        // Typical skin tones (sRGB), light to deep: after the Portrait looks they stay in the
+        // skin-tone hue band, not over-saturated, with moderate brightness changes.
+        let tones: [[f32; 3]; 5] = [[0.88, 0.67, 0.55], [0.78, 0.53, 0.40], [0.62, 0.42, 0.30], [0.45, 0.30, 0.20], [1.0, 0.86, 0.67]];
+        let w = crate::Working::default();
+        for name in ["Soft Portrait", "Golden Skin", "Dreamy Highlights"] {
+            let p = find(name).unwrap();
+            for t in tones {
+                let img = Image::filled(64, 64, [t[0], t[1], t[2], 1.0]);
+                let env = Env { layer_size: [64.0, 64.0], ..Env::default() };
+                let (out, _) = crate::grade(&p.look, &env, 1.0, &img);
+                // The centre pixel (radial / vignette tools are positional).
+                let c = out.data[32 * 64 + 32];
+                let (h, s) = crate::cmath::hue_sat([c[0], c[1], c[2]]);
+                let (h0, s0) = crate::cmath::hue_sat(t);
+                assert!((5.0..=50.0).contains(&h), "{name}: {t:?} → hue {h} (was {h0})");
+                assert!(s <= (s0 + 0.12).min(0.8), "{name}: {t:?} saturation {s0} → {s}");
+                let dy = (w.y([c[0], c[1], c[2]]) - w.y(t)).abs();
+                assert!(dy < 0.2, "{name}: {t:?} luma moved by {dy}");
+            }
+        }
+    }
 }

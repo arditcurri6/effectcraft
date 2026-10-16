@@ -908,6 +908,9 @@ pub fn frontend(app: &mut EffectcraftApp, ctx: &egui::Context, id: &str, p: Valu
         "project.deleteWithoutConfirmation" => crate::panels::delete_items::delete_confirmed(app, ctx, json!({}))?,
         // A gradient property's "Edit Gradient…" (the Timeline's value): the Gradient Editor.
         "prop.editGradient" => crate::panels::gradient_editor::open(app, &p)?,
+        // CineLooks: the editor, and a LUT picked for its LUT tool.
+        "cinelooks.openEditor" => crate::panels::cinelooks::open(app, &p)?,
+        "cinelooks.chooseLut" => crate::panels::cinelooks::lut_chosen(app, &p)?,
         "window.scriptPanel" => {
             let id = p.get("window").and_then(Value::as_u64).ok_or("no ScriptUI panel window")? as u32;
             app.show_panel(PanelKind::ScriptPanel(id));
@@ -1361,6 +1364,10 @@ fn file_dialog(app: &mut EffectcraftApp, id: &str, params: &Value) -> Option<Res
         "keys.rpfCameraImport" => ("path", Ask::Open(&["json", "csv", "txt"])),
         "essential.exportTemplate" => ("path", Ask::Save("Template.ectemplate")),
         "essential.importTemplate" => ("path", Ask::Open(&["ectemplate"])),
+        "cinelooks.importPreset" => ("path", Ask::Open(&["cinelook", "cube", "json"])),
+        "cinelooks.exportPreset" => ("path", Ask::Save("Look.cinelook")),
+        "cinelooks.exportCube" => ("path", Ask::Save("Look.cube")),
+        "cinelooks.chooseLut" => ("path", Ask::Open(&["cube"])),
         "file.setProxy" => ("path", Ask::Open(&["mp4", "mov", "m4v", "mkv", "webm", "mxf", "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp", "exr"])),
         _ => return None,
     };

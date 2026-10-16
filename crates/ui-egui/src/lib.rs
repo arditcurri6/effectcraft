@@ -99,6 +99,8 @@ pub enum Dialog {
     GradientEditor,
     /// Delete a user template from Home? (`panels::templates`).
     DeleteTemplate,
+    /// The CineLooks Editor (`panels::cinelooks`, `cinelooks.openEditor`).
+    CineLooks,
 }
 
 /// The desktop's light or dark appearance where egui cannot see it (Wayland compositors that send

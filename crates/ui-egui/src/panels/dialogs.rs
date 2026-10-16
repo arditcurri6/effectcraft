@@ -57,6 +57,8 @@ pub struct DialogState {
     pub marker: super::markers_ui::MarkerDraft,
     /// Pre-compose dialog.
     pub precompose: super::precomp::PrecomposeDraft,
+    /// The CineLooks Editor's draft, view and caches.
+    pub cinelooks: super::cinelooks::EditorState,
     /// Layer Style dialog.
     pub layer_style: super::layer_styles_dialog::LayerStyleState,
     /// The unsaved-changes prompt and the command it holds.
@@ -262,6 +264,7 @@ pub fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
         Dialog::DeleteItems => super::delete_items::show(app, ctx, &t),
         Dialog::GradientEditor => super::gradient_editor::show(app, ctx, &t),
         Dialog::DeleteTemplate => super::templates::show_delete(app, ctx, &t),
+        Dialog::CineLooks => super::cinelooks::show(app, ctx, &t),
     }
 }
 

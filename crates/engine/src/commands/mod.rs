@@ -11,6 +11,7 @@ pub(crate) mod app_more;
 mod autotrace;
 mod batch;
 mod camera_cmds;
+pub mod cinelooks;
 mod comp;
 pub(crate) mod comp_more;
 pub mod content_fill;
@@ -178,6 +179,7 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(mask::specs());
         v.extend(paths::specs());
         v.extend(effect::specs());
+        v.extend(cinelooks::specs());
         v.extend(time::specs());
         v.extend(nav_more::specs());
         v.extend(render_queue::specs());

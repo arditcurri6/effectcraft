@@ -17,6 +17,7 @@ pub mod catalog;
 mod channel;
 mod channel2;
 mod channel3d;
+pub mod cinelooks;
 mod color2;
 mod color3;
 mod color_fx;
@@ -248,6 +249,10 @@ pub fn flatten_params(g: &PropGroup, eval: &mut dyn FnMut(&Property) -> Value) -
 /// can't read or transforms it passes through. `None` when it renders as asked.
 pub fn warning(g: &PropGroup, eval: &mut dyn FnMut(&Property) -> Value) -> Option<String> {
     let GroupKind::Effect { effect } = &g.kind else { return None };
+    if effect == cinelooks::ID {
+        // A LUT that can't load (the size only matters for positions, not for warnings).
+        return cinelooks::warning(&flatten_params(g, eval), [1920.0, 1080.0]);
+    }
     // Only the effects that can warn evaluate their parameters.
     if !ocio::CUSTOM_CONFIG_FX.contains(&effect.as_str()) {
         return None;
@@ -531,6 +536,7 @@ pub fn registry() -> &'static [EffectSpec] {
         v.extend(channel3d::specs());
         v.extend(time_fx::specs());
         v.extend(frameweaver::specs());
+        v.extend(cinelooks::specs());
         v.extend(audio_fx::specs());
         v.extend(paint::specs());
         v.extend(puppet::specs());
@@ -880,6 +886,7 @@ fn nested_group<'a>(g: &'a mut PropGroup, ids: &mut Ids, path: &str) -> Option<&
 /// pass-throughs and count as GPU effects too.
 pub const GPU_EFFECTS: &[&str] = &[
     "ec.time.frameweaver",
+    cinelooks::ID,
     "ec.blur.gaussian",
     "ec.blur.fastbox",
     "ec.blur.directional",
@@ -1210,6 +1217,8 @@ pub const TIME_DEPENDENT: &[&str] = &[
     "ec.time.ccwidetime",
     "ec.time.pixelmotionblur",
     "ec.time.frameweaver",
+    // CineLooks' film grain changes every frame.
+    cinelooks::ID,
     // Refine mattes' Reduce Chatter / motion blur read neighbouring frames.
     "ec.matte.refinesoft",
     "ec.matte.refinehard",

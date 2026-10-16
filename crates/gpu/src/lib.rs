@@ -59,6 +59,7 @@ mod classic3d;
 mod context;
 pub mod deferred;
 mod effects;
+mod fx_cinelooks;
 mod fx_color;
 mod fx_depth;
 mod fx_distort;
@@ -414,6 +415,8 @@ mod tests_adv3d;
 mod tests_deferred;
 #[cfg(test)]
 mod tests_deferred_jobs;
+#[cfg(test)]
+mod tests_fx_cinelooks;
 #[cfg(test)]
 mod tests_fx_color;
 #[cfg(test)]

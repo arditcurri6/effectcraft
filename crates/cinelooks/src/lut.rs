@@ -122,7 +122,11 @@ pub fn parse_cube(text: &str) -> Result<Lut, String> {
     lut.d1 = d1.to_vec();
     lut.d3 = d3.to_vec();
     let check = |lo: [f32; 3], hi: [f32; 3]| -> Result<(), String> {
-        if (0..3).any(|i| hi[i].partial_cmp(&lo[i]) != Some(std::cmp::Ordering::Greater)) { Err("DOMAIN_MAX must be greater than DOMAIN_MIN in every channel".into()) } else { Ok(()) }
+        if (0..3).any(|i| hi[i].partial_cmp(&lo[i]) != Some(std::cmp::Ordering::Greater)) {
+            Err("DOMAIN_MAX must be greater than DOMAIN_MIN in every channel".into())
+        } else {
+            Ok(())
+        }
     };
     if let Some((lo, hi)) = domain {
         check(lo, hi)?;

@@ -182,16 +182,26 @@ impl Node {
 
     /// Colour parameter (RGB, straight, encoded like the working space), clamped to 0..4.
     pub fn color(&self, id: &str) -> [f32; 3] {
+        self.color64(id).map(|v| v as f32)
+    }
+
+    /// [`Node::color`] at full precision.
+    pub fn color64(&self, id: &str) -> [f64; 3] {
         let c = self.list(id, [1.0; 4]);
-        [c[0], c[1], c[2]].map(|v| v.clamp(0.0, 4.0) as f32)
+        [c[0], c[1], c[2]].map(|v| v.clamp(0.0, 4.0))
     }
 
     /// Wheel `[x, y, master]`: `(x, y)` pulled into the unit disc, master clamped to ±1.
     pub fn wheel(&self, id: &str) -> [f32; 3] {
+        self.wheel64(id).map(|v| v as f32)
+    }
+
+    /// [`Node::wheel`] at full precision.
+    pub fn wheel64(&self, id: &str) -> [f64; 3] {
         let [x, y, m] = self.list(id, [0.0; 3]);
         let r = (x * x + y * y).sqrt();
         let k = if r > 1.0 { 1.0 / r } else { 1.0 };
-        [(x * k) as f32, (y * k) as f32, m.clamp(-1.0, 1.0) as f32]
+        [x * k, y * k, m.clamp(-1.0, 1.0)]
     }
 
     /// Point as fractions of the layer size (clamped to a generous ±10 layers).
@@ -230,10 +240,10 @@ impl Node {
                     (Kind::Num { .. } | Kind::Angle | Kind::Choice(_), PV::Num(_) | PV::Bool(_)) => Some(PV::Num(self.num(id))),
                     (Kind::Toggle, _) => Some(PV::Bool(self.flag(id))),
                     (Kind::Color, PV::List(_)) => {
-                        let c = self.list(id, [1.0; 4]);
-                        Some(PV::List(vec![c[0].clamp(0.0, 4.0), c[1].clamp(0.0, 4.0), c[2].clamp(0.0, 4.0), 1.0]))
+                        let c = self.color64(id);
+                        Some(PV::List(vec![c[0], c[1], c[2], 1.0]))
                     }
-                    (Kind::Wheel, PV::List(_)) => Some(PV::List(self.wheel(id).iter().map(|v| *v as f64).collect())),
+                    (Kind::Wheel, PV::List(_)) => Some(PV::List(self.wheel64(id).to_vec())),
                     (Kind::Point, PV::List(_)) => Some(PV::List(self.point(id).to_vec())),
                     (Kind::Curve | Kind::File(_) | Kind::Data, PV::Text(_)) => Some(v.clone()),
                     _ => None,

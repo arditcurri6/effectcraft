@@ -75,16 +75,22 @@ pub fn resolve(env: impl Fn(&str) -> Option<OsString>, exe_dir: Option<&Path>) -
     }
 }
 
+/// The data folder's name when the build sets one (`EFFECTCRAFT_DATA_NAME` at compile time):
+/// a local development build (`packaging/macos/custom-app.sh`) keeps its settings, workspaces
+/// and crash recovery apart from an installed release.
+pub const BUILD_DATA_NAME: Option<&str> = option_env!("EFFECTCRAFT_DATA_NAME");
+
 /// The platform convention, from `env` (so tests can fake `HOME`/`APPDATA`/`XDG_CONFIG_HOME`).
 pub fn platform_dir(env: &impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     let home = || env("HOME").map(PathBuf::from);
+    let name = |default: &'static str| BUILD_DATA_NAME.filter(|n| !n.trim().is_empty() && !n.contains(['/', '\\'])).unwrap_or(default);
     if cfg!(target_os = "macos") {
-        return home().map(|h| h.join("Library/Application Support/EffectCraft"));
+        return home().map(|h| h.join("Library/Application Support").join(name("EffectCraft")));
     }
     if cfg!(target_os = "windows") {
-        return env("APPDATA").map(|a| PathBuf::from(a).join("EffectCraft"));
+        return env("APPDATA").map(|a| PathBuf::from(a).join(name("EffectCraft")));
     }
-    env("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| home().map(|h| h.join(".config"))).map(|c| c.join("effectcraft"))
+    env("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| home().map(|h| h.join(".config"))).map(|c| c.join(name("effectcraft")))
 }
 
 /// The first portable marker file in `exe_dir`, if any.

@@ -17,6 +17,7 @@ effectcraft-geom = { path = "crates/geom" }
 effectcraft-color = { path = "crates/color" }
 effectcraft-raster = { path = "crates/raster" }
 effectcraft-frameweaver = { path = "crates/frameweaver" }
+effectcraft-cinelooks = { path = "crates/cinelooks" }
 effectcraft-path = { path = "crates/path" }
 effectcraft-keyframe = { path = "crates/keyframe" }
 effectcraft-project = { path = "crates/project" }
@@ -142,6 +143,9 @@ opt-level = 1
 opt-level = 3
 
 [profile.dev.package.effectcraft-frameweaver]
+opt-level = 3
+
+[profile.dev.package.effectcraft-cinelooks]
 opt-level = 3
 
 [profile.dev.package.effectcraft-render]

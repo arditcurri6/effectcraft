@@ -1,0 +1,17 @@
+[package]
+name = "effectcraft-cinelooks"
+description = "CineLooks: modular cinematic colour grading (tool chains, film response, grain, halation, LUTs, lens and selective tools) with a CPU executor and the program the GPU kernels run"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+effectcraft-color = { workspace = true }
+effectcraft-raster = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

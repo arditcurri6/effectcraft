@@ -174,3 +174,34 @@ fn shader_validates_and_declares_every_kernel() {
         assert!(entries.contains(k), "kernel {k} is not declared");
     }
 }
+
+/// Timings (`cargo test -p effectcraft-gpu --lib cinelooks_bench -- --ignored --nocapture`): CPU
+/// engine vs GPU (one upload, the kernels, one readback) at 1080p and 4K for three looks.
+#[test]
+#[ignore]
+fn cinelooks_bench() {
+    let Some(g) = gpu() else { return };
+    let spec = effectcraft_effects::find(ID).unwrap();
+    for (w, h) in [(1920u32, 1080u32), (3840, 2160)] {
+        let size = [w as f64, h as f64];
+        for name in ["Cool Shadows", "Warm Cinema", "Blockbuster Teal & Orange", "Neon Streets"] {
+            let look = effectcraft_cinelooks::presets::find(name).unwrap().look.clone();
+            let mut next = 1;
+            let inst = instance(&look, size, &mut next);
+            let params: Params = flatten_params(&inst, &mut |p| p.value.clone());
+            let buf = Buf { img: footage(w, h), offset: [0.0, 0.0], scale: 1.0 };
+            let ctx = || EffectCtx { params: &params, time: 0.5, layer_size: size, seed: 3, adjustment: false, env: EffectEnv::default() };
+            let mut cpu_ms = f64::MAX;
+            let mut gpu_ms = f64::MAX;
+            for _ in 0..3 {
+                let t = std::time::Instant::now();
+                let _ = (spec.render)(&ctx(), buf.clone());
+                cpu_ms = cpu_ms.min(t.elapsed().as_secs_f64() * 1000.0);
+                let t = std::time::Instant::now();
+                let _ = effectcraft_render::Accelerator::effects(g, &[effectcraft_render::FxStep { spec, ctx: ctx() }], &buf, None).unwrap();
+                gpu_ms = gpu_ms.min(t.elapsed().as_secs_f64() * 1000.0);
+            }
+            println!("{w}x{h} {name:<28} {} tools  CPU {cpu_ms:7.1} ms   GPU+transfer {gpu_ms:7.1} ms", look.nodes.len());
+        }
+    }
+}

@@ -1,6 +1,6 @@
 # CineLooks: design and implementation plan
 
-Status: implemented (branch `cinelooks`, from `frameweaver-cloud-port`; commits CL1–CL6). User guide:
+Status: implemented (branch `cinelooks`, from `frameweaver-cloud-port`; commits CL1–CL7). User guide:
 [`docs/cinelooks.md`](../../cinelooks.md). Effect id
 `ec.color.cinelooks`, display name **CineLooks**, category Color Correction.
 

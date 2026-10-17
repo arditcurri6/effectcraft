@@ -1,6 +1,7 @@
 # CineLooks: design and implementation plan
 
-Status: in progress (branch `cinelooks`, from `frameweaver-cloud-port`). Effect id
+Status: implemented (branch `cinelooks`, from `frameweaver-cloud-port`; commits CL1–CL6). User guide:
+[`docs/cinelooks.md`](../../cinelooks.md). Effect id
 `ec.color.cinelooks`, display name **CineLooks**, category Color Correction.
 
 CineLooks is a modular cinematic colour-grading effect: a *look* is an ordered chain of tools

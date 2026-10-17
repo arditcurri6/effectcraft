@@ -206,3 +206,23 @@ fn the_rendered_frame_matches_the_editor_preview() {
     let worst = frame.data.iter().zip(&preview.data).map(|(a, b)| (0..4).map(|i| (a[i] - b[i]).abs()).fold(0.0f32, f32::max)).fold(0.0f32, f32::max);
     assert!(worst < 1e-4, "export and preview differ by {worst}");
 }
+
+#[test]
+fn duplicating_the_effect_duplicates_the_look() {
+    let (mut s, l) = session();
+    let fx = s.execute("cinelooks.apply", json!({"layers": [l], "preset": "Night City"})).unwrap()["effects"][0].as_u64().unwrap();
+    s.execute("effect.duplicate", json!({"layer": l, "effect": fx})).unwrap();
+    let cid = s.active_comp_id().unwrap();
+    let groups: Vec<u64> = s.active_comp().unwrap().layer(LayerId(l)).unwrap().effects().unwrap().groups().map(|g| g.uid).collect();
+    assert_eq!(groups.len(), 2);
+    let a = read_look(&s, cid, LayerId(l), groups[0], effectcraft_time::Tick::ZERO).unwrap().0;
+    let b = read_look(&s, cid, LayerId(l), groups[1], effectcraft_time::Tick::ZERO).unwrap().0;
+    assert_eq!(a.detached(), b.detached(), "same tools and values");
+    // The copy's nodes are its own (editing one leaves the other).
+    assert!(a.nodes.iter().zip(&b.nodes).all(|(x, y)| x.uid != y.uid));
+    let mut edited = b.clone();
+    edited.nodes[0] = edited.nodes[0].clone().with("temperature", -90.0);
+    s.execute("cinelooks.setLook", json!({"layer": l, "effect": groups[1], "look": edited})).unwrap();
+    let a2 = read_look(&s, cid, LayerId(l), groups[0], effectcraft_time::Tick::ZERO).unwrap().0;
+    assert_eq!(a2.detached(), a.detached());
+}
